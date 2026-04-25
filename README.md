@@ -25,7 +25,7 @@ It simulates real-world distributed system behavior where duplicate API response
 ## 🔗 API Details
 
 **Base URL:**
-https://devapigw.vidalhealthtpa.com/srm-quiz-task
+https://devapigw.vidalhealthtpa.com/srm-quiz-task/quiz/messages?regNo=AP23110010570&poll=0
 
 **Endpoints Used:**
 
