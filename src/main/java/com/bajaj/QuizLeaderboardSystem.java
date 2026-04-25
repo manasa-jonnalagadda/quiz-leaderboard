@@ -26,74 +26,100 @@ public class QuizLeaderboardSystem {
     private static final HttpClient httpClient = HttpClient.newHttpClient();
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
 
-        Set<String> seenKeys = new HashSet<>();
-        Map<String, Integer> scoreMap = new LinkedHashMap<>();
+        try {
+            Set<String> seenKeys = new HashSet<>();
+            Map<String, Integer> scoreMap = new LinkedHashMap<>();
 
-        System.out.println("=== Quiz Leaderboard System Started ===\n");
+            System.out.println("=== Quiz Leaderboard System Started ===\n");
 
-        for (int poll = 0; poll < TOTAL_POLLS; poll++) {
+            int totalFetchedEvents = 0;
 
-            System.out.println("➡ Fetching poll " + poll + "...");
+            // Poll API 10 times
+            for (int poll = 0; poll < TOTAL_POLLS; poll++) {
 
-            HttpResponse<String> response = fetchPoll(poll);
+                System.out.println("Fetching poll " + poll + "...");
 
-            if (response.statusCode() != 200) {
-                System.out.println("❌ Failed to fetch poll " + poll + " | Status: " + response.statusCode());
-                continue;
-            }
+                HttpResponse<String> response = fetchPoll(poll);
 
-            System.out.println("✔ Poll " + poll + " fetched successfully");
+                if (response.statusCode() != 200) {
+                    System.out.println("Failed to fetch poll " + poll + " | Status: " + response.statusCode());
+                    continue;
+                }
 
-            JsonNode root = objectMapper.readTree(response.body());
-            JsonNode events = root.get("events");
+                System.out.println("Poll " + poll + " fetched successfully");
 
-            if (events != null && events.isArray()) {
-                for (JsonNode event : events) {
+                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode events = root.get("events");
 
-                    String roundId = event.get("roundId").asText();
-                    String participant = event.get("participant").asText();
-                    int score = event.get("score").asInt();
+                if (events != null && events.isArray()) {
 
-                    String dedupKey = roundId + "::" + participant;
+                    for (JsonNode event : events) {
 
-                    if (seenKeys.contains(dedupKey)) {
-                        System.out.println("  ⚠ Duplicate skipped: " + dedupKey);
-                    } else {
-                        seenKeys.add(dedupKey);
-                        scoreMap.merge(participant, score, Integer::sum);
-                        System.out.println("  ✔ Added: " + participant + " +" + score);
+                        totalFetchedEvents++;
+
+                        String roundId = event.get("roundId").asText();
+                        String participant = event.get("participant").asText();
+                        int score = event.get("score").asInt();
+
+                        String dedupKey = roundId + "::" + participant;
+
+                        // Deduplication
+                        if (seenKeys.contains(dedupKey)) {
+                            System.out.println("Duplicate skipped: " + dedupKey);
+                        } else {
+                            seenKeys.add(dedupKey);
+
+                            // Aggregation
+                            scoreMap.merge(participant, score, Integer::sum);
+
+                            System.out.println("Added: " + participant + " +" + score);
+                        }
                     }
+                }
+
+                // Mandatory 5 sec delay
+                if (poll < TOTAL_POLLS - 1) {
+                    System.out.println("Waiting 5 seconds...\n");
+                    Thread.sleep(DELAY_MS);
                 }
             }
 
-            if (poll < TOTAL_POLLS - 1) {
-                System.out.println("⏳ Waiting 5 seconds...\n");
-                Thread.sleep(DELAY_MS);
+            // Data Summary
+            System.out.println("\n=== DATA SUMMARY ===");
+            System.out.println("Total events fetched: " + totalFetchedEvents);
+            System.out.println("Unique events after dedup: " + seenKeys.size());
+            System.out.println("Unique participants: " + scoreMap.size());
+
+            // Sort leaderboard
+            List<Map.Entry<String, Integer>> leaderboard = new ArrayList<>(scoreMap.entrySet());
+            leaderboard.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+
+            // Display leaderboard
+            System.out.println("\n=== FINAL LEADERBOARD ===");
+
+            int totalScore = 0;
+            int rank = 1;
+
+            for (Map.Entry<String, Integer> entry : leaderboard) {
+                System.out.println(rank + ". " + entry.getKey() + " - " + entry.getValue());
+                totalScore += entry.getValue();
+                rank++;
             }
+
+            System.out.println("\nTotal Score Across All Users: " + totalScore);
+
+            // Submit leaderboard
+            submitLeaderboard(leaderboard);
+
+        } catch (Exception e) {
+            System.out.println("Error occurred: " + e.getMessage());
+            e.printStackTrace();
         }
-
-        // Sort leaderboard
-        List<Map.Entry<String, Integer>> leaderboard = new ArrayList<>(scoreMap.entrySet());
-        leaderboard.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
-
-        // Display leaderboard
-        System.out.println("\n=== FINAL LEADERBOARD ===");
-        int totalScore = 0;
-
-        for (Map.Entry<String, Integer> entry : leaderboard) {
-            System.out.println(entry.getKey() + " -> " + entry.getValue());
-            totalScore += entry.getValue();
-        }
-
-        System.out.println("Total Score: " + totalScore);
-
-        // Submit leaderboard
-        submitLeaderboard(leaderboard);
     }
 
-    // 🔹 Method to fetch API response
+    // Fetch API
     private static HttpResponse<String> fetchPoll(int poll) throws Exception {
 
         String url = BASE_URL + "/quiz/messages?regNo=" + REG_NO + "&poll=" + poll;
@@ -106,7 +132,7 @@ public class QuizLeaderboardSystem {
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    // 🔹 Method to submit leaderboard
+    // Submit leaderboard
     private static void submitLeaderboard(List<Map.Entry<String, Integer>> leaderboard) throws Exception {
 
         ObjectNode submitBody = objectMapper.createObjectNode();
@@ -125,7 +151,7 @@ public class QuizLeaderboardSystem {
 
         String payload = objectMapper.writeValueAsString(submitBody);
 
-        System.out.println("\n🚀 Submitting leaderboard...");
+        System.out.println("\nSubmitting leaderboard...");
         System.out.println("Payload: " + payload);
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -143,7 +169,7 @@ public class QuizLeaderboardSystem {
         JsonNode result = objectMapper.readTree(response.body());
 
         if (result.has("isCorrect")) {
-            System.out.println("✔ Correct: " + result.get("isCorrect").asBoolean());
+            System.out.println("Correct: " + result.get("isCorrect").asBoolean());
         }
 
         if (result.has("message")) {
