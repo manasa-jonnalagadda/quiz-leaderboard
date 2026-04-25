@@ -36,7 +36,6 @@ public class QuizLeaderboardSystem {
 
             int totalFetchedEvents = 0;
 
-            // Poll API 10 times
             for (int poll = 0; poll < TOTAL_POLLS; poll++) {
 
                 System.out.println("Fetching poll " + poll + "...");
@@ -65,28 +64,30 @@ public class QuizLeaderboardSystem {
 
                         String dedupKey = roundId + "::" + participant;
 
-                        // Deduplication
                         if (seenKeys.contains(dedupKey)) {
                             System.out.println("Duplicate skipped: " + dedupKey);
                         } else {
                             seenKeys.add(dedupKey);
-
-                            // Aggregation
                             scoreMap.merge(participant, score, Integer::sum);
-
                             System.out.println("Added: " + participant + " +" + score);
                         }
                     }
                 }
 
-                // Mandatory 5 sec delay
+                // Required delay (handled safely)
                 if (poll < TOTAL_POLLS - 1) {
                     System.out.println("Waiting 5 seconds...\n");
-                    Thread.sleep(DELAY_MS);
+                    try {
+                        Thread.sleep(DELAY_MS);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        System.out.println("Sleep interrupted");
+                    }
+                    
                 }
             }
 
-            // Data Summary
+            // Summary
             System.out.println("\n=== DATA SUMMARY ===");
             System.out.println("Total events fetched: " + totalFetchedEvents);
             System.out.println("Unique events after dedup: " + seenKeys.size());
@@ -110,16 +111,14 @@ public class QuizLeaderboardSystem {
 
             System.out.println("\nTotal Score Across All Users: " + totalScore);
 
-            // Submit leaderboard
             submitLeaderboard(leaderboard);
 
         } catch (Exception e) {
+            // Clean error handling (no stack trace dump)
             System.out.println("Error occurred: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
-    // Fetch API
     private static HttpResponse<String> fetchPoll(int poll) throws Exception {
 
         String url = BASE_URL + "/quiz/messages?regNo=" + REG_NO + "&poll=" + poll;
@@ -132,7 +131,6 @@ public class QuizLeaderboardSystem {
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    // Submit leaderboard
     private static void submitLeaderboard(List<Map.Entry<String, Integer>> leaderboard) throws Exception {
 
         ObjectNode submitBody = objectMapper.createObjectNode();
